@@ -11,6 +11,8 @@ module.exports = function(object) {
 	var used = [];
 	var draining = false;
 	
+	var minInterval;
+	
 	this.getIdleArray = function() {
 		return idle;
 	}
@@ -51,8 +53,9 @@ module.exports = function(object) {
 				callback(null, item.resource);
 			}
 		} else {
-			this.create();
-			this.acquire(callback);
+			this.create(function() {
+				this.acquire(callback);
+			}.bind(this));
 		}
 	}
 	
@@ -109,22 +112,30 @@ module.exports = function(object) {
 	}
 	
 	this.destory = function(item, cb) {
+		var err = null;
 		if(item.used) {
-			return cb(new Error('Connection needs to be released before being destoryed'));
+			err = new Error('Connection needs to be released before being destoryed');
 		} 
 		if(factory.destory) {
-			return factory.destory(null, item.resource, cb);
+			return factory.destory(err, item.resource, cb);
 		} else{
-			return cb(null, item.resource)
+			if(cb) {
+				return cb(err, item.resource)
+			}
 		}
 	};
 	
+	/**
+	 * Standard idle routine
+	 */
 	function makeIdle(item) {
-		//console.log(item);
 		item.used = false;
 		idle.push(item);
 	}
 	
+	/**
+	 * Release a connection
+	 */
 	this.release = function(item, cb) {
 		used.splice(item.__usedIndex, 1);
 		makeIdle(item);
@@ -135,7 +146,10 @@ module.exports = function(object) {
 		}
 	};
 	
-	this.create = function() {
+	/**
+	 * Create a connection
+	 */
+	this.create = function(createCB) {
 		factory.create(function(err, resource) {
 			if(err) {
 				throw new Exception(e);
@@ -154,16 +168,27 @@ module.exports = function(object) {
 				item.resource.destory = function(cb) {
 					this.parent.destory(this.item, cb);
 				}.bind({parent: this, item: item});
+				if(createCB) {
+					createCB();
+				}
 			}
 		}.bind(this));
 	};
 	
-	this.initialize = function() {
-		for(var x = 0; x < factory.min; x++) {
-			this.create();
+	this.spinMin = function(c, callback) {
+		if(c >= factory.min) {
+			callback();
+		} else {
+			this.create(function() {
+				this.spinMin((idle.length + used.length), callback);
+			}.bind(this));
 		}
-	}	
-	this.initialize();
+	};
+	
+	this.startup = function(cb) {
+		this.spinMin((idle.length + used.length), cb);
+	}
+	
 	this.cleaner = setInterval(function() {
 		while (idle.length > factory.min) {
 			var item = idle.shift();
