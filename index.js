@@ -11,6 +11,8 @@ module.exports = function(object) {
 	var used = [];
 	var draining = false;
 	
+	var started = false;
+	
 	var minInterval;
 	
 	this.getIdleArray = function() {
@@ -19,6 +21,10 @@ module.exports = function(object) {
 		
 	this.getUsedArray = function() {
 		return used;
+	}
+
+	this.hasStarted = function() {
+		return started;
 	}
 	
 	this.idle = function() {
@@ -186,7 +192,10 @@ module.exports = function(object) {
 	};
 	
 	this.startup = function(cb) {
-		this.spinMin((idle.length + used.length), cb);
+		this.spinMin((idle.length + used.length), function() {
+			started = true;
+			cb()
+		});
 	}
 	
 	this.cleaner = setInterval(function() {

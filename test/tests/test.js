@@ -18,8 +18,7 @@ module.exports = function(config) {
 			} catch(e) {
 				done(e);
 			}
-		});
-		
+		});		
 		
 		it('Should have the minimum amount of connections at initalization', function(done) {
 			try {
@@ -36,6 +35,28 @@ module.exports = function(config) {
 			} catch(e) {
 				done(e);
 			}
+		});
+		
+		it('Should have the appropriate state when started', function(done) {
+			var config = getConfig();
+			var p = new pool(config);
+			p.startup(function() {
+				if(p.hasStarted()) {
+					done();
+				} else {
+					done(new Error("Did not change state to started"));
+				}
+			});
+		});
+		
+		it('Should have the appropriate state before being started', function(done) {
+			var config = getConfig();
+			var p = new pool(config);
+			if(!p.hasStarted()) {
+				done();
+			} else {
+				done(new Error("State not reflected properly"));
+			}			
 		});
 		
 		it('Should provide connection', function(done) {
