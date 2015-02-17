@@ -1,6 +1,6 @@
 {
   "name": "item-pool",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A simple system to create pools of things",
   "main": "index.js",
   "scripts": {
