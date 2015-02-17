@@ -6,23 +6,25 @@ var async = require('async');
 
 module.exports = function(object) {
 	
+	var index = 0;
+	var idle = {};
+	var used = {};
+	
 	var factory = object;
-	var idle = [];
-	var used = [];
 	var draining = false;
 	
 	var started = false;
 	
 	var minInterval;
 	
-	this.getIdleArray = function() {
+	this.getIdle = function() {
 		return idle;
 	}
-		
-	this.getUsedArray = function() {
+	
+	this.getUsed = function() {
 		return used;
 	}
-
+	
 	this.hasStarted = function() {
 		return started;
 	}
@@ -32,11 +34,11 @@ module.exports = function(object) {
 	}
 	
 	this.idle = function() {
-		return idle.length;
+		return Object.keys(idle).length;
 	}
 	
 	this.used = function() {
-		return used.length;
+		return Object.keys(used).length;
 	}
 	
 	this.state = function() {
@@ -50,12 +52,14 @@ module.exports = function(object) {
 		if(draining) {
 			callback(new Error('Pool is draining'));
 		}
-		if(idle.length) {
-			var item = idle.shift();
+		if(this.idle()) {
+			var item = idle[Object.keys(idle)[0]];
+			delete idle[item.id];
 			
 			item.uses++;
 			item.used=true;
-			item.__usedIndex = used.push(item) -1;
+			
+			used[item.id] = item;
 			
 			if(factory.acquire) {
 				factory.acquire(null, item.resource, callback);
@@ -101,23 +105,23 @@ module.exports = function(object) {
 		clearInterval(this.cleaner);		
 		if(forced) {
 			this.releaseAll(function() {
-				__drain(cb);
-			});
+				this.__drain(cb);
+			}.bind(this));
 		} else {
-			__drain(cb)
+			this.__drain(cb)
 		}		
 	};
 	
 	/**
 	 * Draining routine
 	 */
-	function __drain(cb) {
+	this.__drain = function(cb) {
 		this.drainInterval = setInterval(function() {
-			while (idle.length > 0) {
-				var item = idle.shift();				
+			while (this.idle() > 0) {
+				var item = idle[Object.keys(idle)[0]];
 				item.resource.destory();
 			}
-			if(used.length == 0) {
+			if(this.used() == 0) {
 				clearInterval(this.drainInterval);
 				cb(null);
 			}
@@ -128,8 +132,9 @@ module.exports = function(object) {
 		var err = null;
 		if(item.used) {
 			err = new Error('Connection needs to be released before being destoryed');
-		}
-		idle.splice(item.__idleIndex, 1);
+		}		
+		delete idle[item.id];
+//		console.log(idle);
 		if(factory.destory) {
 			return factory.destory(err, item.resource, cb);
 		} else{
@@ -144,14 +149,14 @@ module.exports = function(object) {
 	 */
 	function makeIdle(item) {
 		item.used = false;
-		item.__idleIndex = idle.push(item) - 1;
+		idle[item.id] = item;
 	}
 	
 	/**
 	 * Release a connection
 	 */
 	this.release = function(item, cb) {
-		used.splice(item.__usedIndex, 1);
+		delete used[item.id];
 		makeIdle(item);
 		if(factory.release) {
 			return factory.release(null, item.resource, cb);
@@ -164,14 +169,15 @@ module.exports = function(object) {
 	 * Create a connection
 	 */
 	this.create = function(createCB) {
-		if((idle.length + used.length) >= factory.max) {
+		if((Object.keys(idle).length + Object.keys(used).length) >= factory.max) {
 			return createCB(new Error('Maximum amount of items defined by config.max already created'));
 		}
 		factory.create(function(err, resource) {
 			if(err) {
 				throw new Exception(e);
 			} else {
-				var item = {resource: resource, used: false, uses: 0};
+				var item = {resource: resource, used: false, uses: 0, id: index};
+				index++;
 				makeIdle(item);
 				item.resource.release = function(cb) {
 					if(cb) {
@@ -184,7 +190,7 @@ module.exports = function(object) {
 				
 				item.resource.destory = function(cb) {
 					this.parent.destory(this.item, cb);
-				}.bind({parent: this, item: item});
+				}.bind({parent: this, item: item});				
 				if(createCB) {
 					createCB();
 				}
@@ -205,13 +211,18 @@ module.exports = function(object) {
 	this.startup = function(cb) {
 		this.spinMin(this.total(), function() {
 			started = true;
+			this.intervalMin = setInterval(function() {
+				this.spinMin(this.total(), function() {
+					
+				})
+			}.bind(this), 100);
 			cb()
-		});
+		}.bind(this));
 	}
 	
 	this.cleaner = setInterval(function() {
-		while ((this.total() >= factory.min) && (this.idle() > 0)) {
-			var item = idle.shift();
+		while ((this.total() > factory.min) && (this.idle() > 0)) {
+			var item = idle[Object.keys(idle)[0]];			
 			item.resource.destory();
 		};
 	}.bind(this), factory.ttl);

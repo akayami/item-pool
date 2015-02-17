@@ -195,7 +195,8 @@ module.exports = function(config) {
 						item.release(function(err, item) {
 							p.acquire(function(err, item) {
 								item.release(function(err, item){
-									if(p.getIdleArray()[0].uses == 2) {
+									var idle = p.getIdle();
+									if(idle[Object.keys(idle)[0]].uses == 2) {
 										done();
 									} else {
 										done('Done count does not match. Expected 2. Detected: ' + p.getPoolArray()[0].uses)
@@ -216,21 +217,17 @@ module.exports = function(config) {
 				config.ttl = 50;
 				var p = new pool(config);
 				p.startup(function() {
-					console.log(p.state());
 					p.acquire(function(err, item1) {
-						console.log(p.state());
 						p.acquire(function(err, item2) {
 							item2.release();
 							item1.release();
-//							console.log(p.state());
 						})
 					});
 					var itrv = setInterval(function() {
-						console.log(p.state());
-//						if(p.idle()== 1) {
-//							clearInterval(itrv);
-//							done();
-//						}
+						if(p.idle()== 1) {
+							clearInterval(itrv);
+							done();
+						}
 					},100);
 				});
 			} catch(e) {
@@ -450,8 +447,12 @@ module.exports = function(config) {
 									if(err) {
 										done(err);
 									} else {
-										console.log(p.state());
-										done();
+										var i = setInterval(function() {
+											if(p.total() == config.min) {
+												clearInterval(i);
+												done();
+											}
+										}, 100);
 									}
 								});
 							})
