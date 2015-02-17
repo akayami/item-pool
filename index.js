@@ -27,6 +27,10 @@ module.exports = function(object) {
 		return started;
 	}
 	
+	this.total = function() {
+		return this.idle() + this.used();
+	}
+	
 	this.idle = function() {
 		return idle.length;
 	}
@@ -59,7 +63,10 @@ module.exports = function(object) {
 				callback(null, item.resource);
 			}
 		} else {
-			this.create(function() {
+			this.create(function(err) {
+				if(err) {
+					return callback(err);
+				}
 				this.acquire(callback);
 			}.bind(this));
 		}
@@ -121,7 +128,8 @@ module.exports = function(object) {
 		var err = null;
 		if(item.used) {
 			err = new Error('Connection needs to be released before being destoryed');
-		} 
+		}
+		idle.splice(item.__idleIndex, 1);
 		if(factory.destory) {
 			return factory.destory(err, item.resource, cb);
 		} else{
@@ -136,7 +144,7 @@ module.exports = function(object) {
 	 */
 	function makeIdle(item) {
 		item.used = false;
-		idle.push(item);
+		item.__idleIndex = idle.push(item) - 1;
 	}
 	
 	/**
@@ -156,6 +164,9 @@ module.exports = function(object) {
 	 * Create a connection
 	 */
 	this.create = function(createCB) {
+		if((idle.length + used.length) >= factory.max) {
+			return createCB(new Error('Maximum amount of items defined by config.max already created'));
+		}
 		factory.create(function(err, resource) {
 			if(err) {
 				throw new Exception(e);
@@ -186,22 +197,22 @@ module.exports = function(object) {
 			callback();
 		} else {
 			this.create(function() {
-				this.spinMin((idle.length + used.length), callback);
+				this.spinMin(this.total(), callback);
 			}.bind(this));
 		}
 	};
 	
 	this.startup = function(cb) {
-		this.spinMin((idle.length + used.length), function() {
+		this.spinMin(this.total(), function() {
 			started = true;
 			cb()
 		});
 	}
 	
 	this.cleaner = setInterval(function() {
-		while (idle.length > factory.min) {
+		while ((this.total() >= factory.min) && (this.idle() > 0)) {
 			var item = idle.shift();
 			item.resource.destory();
 		};
-	}, factory.ttl);
+	}.bind(this), factory.ttl);
 }

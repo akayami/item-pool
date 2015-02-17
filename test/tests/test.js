@@ -216,17 +216,21 @@ module.exports = function(config) {
 				config.ttl = 50;
 				var p = new pool(config);
 				p.startup(function() {
-					p.acquire(function(err, item1) {	
+					console.log(p.state());
+					p.acquire(function(err, item1) {
+						console.log(p.state());
 						p.acquire(function(err, item2) {
 							item2.release();
+							item1.release();
+//							console.log(p.state());
 						})
-						item1.release()
 					});
 					var itrv = setInterval(function() {
-						if(p.idle()== 1) {
-							clearInterval(itrv);
-							done();
-						}
+						console.log(p.state());
+//						if(p.idle()== 1) {
+//							clearInterval(itrv);
+//							done();
+//						}
 					},100);
 				});
 			} catch(e) {
@@ -388,5 +392,75 @@ module.exports = function(config) {
 				done(e);
 			}
 		});
+		
+		it('Should limit the number of connections', function(done) {
+			try {
+				var config = getConfig();
+				config.max = 3;
+				var p = new pool(config);
+				p.startup(function(err) {
+					if(err) {
+						return done(err);
+					}
+					p.acquire(function(err, i) {
+						if(err) {
+							return done(err);
+						}
+						p.acquire(function(err, j) {
+							if(err) {
+								return done(err);
+							}
+							p.acquire(function(err, k) {
+								if(err) {
+									return done(err);
+								}
+								p.acquire(function(err, k) {
+									if(!err) {
+										return done(new Error('Acquire should have returned an error when asking for resources beyond maxium count'));
+									} else {
+										if(err.message == 'Maximum amount of items defined by config.max already created') {
+											return done();
+										} else {
+											return done(new Error('Unexpected error message:' + e.message))
+										}
+									}
+									
+								})
+							})
+						})
+					})
+				});
+			} catch(e) {
+				done(e);
+			}
+		});
+		
+		it('Should readjust the number of connection to the minimum specified in config.min', function(done) {
+			try {
+				var config = getConfig();
+				config.min = 2;
+				var p = new pool(config);
+				p.startup(function(err) {
+					if(err) {
+						return done(err);
+					} else {
+						p.acquire(function(err, conn) {
+							conn.release(function(err) {
+								conn.destory(function(err, conn) {
+									if(err) {
+										done(err);
+									} else {
+										console.log(p.state());
+										done();
+									}
+								});
+							})
+						});
+					}
+				});
+			} catch(e) {
+				done(e);
+			}
+		})
 	});
 }
